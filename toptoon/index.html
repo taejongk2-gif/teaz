@@ -1,0 +1,1283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>탑툰챗 대화 모니터링</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10);
+    --good-text: #006300; --bad-text: #b3261e; --warn-bg: #fff6dd; --warn-ink: #6b4b00;
+    /* 시장별 색상군 (카테고리 슬롯 1~6, light) */
+    --w1: #2a78d6; --w2: #eb6834; --w3: #1baf7a; --w4: #e87ba4; --w5: #6250d6; --w6: #eda100; --w7: #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #fff; --ink2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+      --good-text: #0ca30c; --bad-text: #e66767; --warn-bg: #3a2f10; --warn-ink: #f0d58a;
+      --w1: #3987e5; --w2: #d95926; --w3: #199e70; --w4: #d55181; --w5: #9085e9; --w6: #c98500; --w7: #898781;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #fff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+    --good-text: #0ca30c; --bad-text: #e66767; --warn-bg: #3a2f10; --warn-ink: #f0d58a;
+    --w1: #3987e5; --w2: #d95926; --w3: #199e70; --w4: #d55181; --w5: #9085e9; --w6: #c98500; --w7: #898781;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding-block: 24px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .embed h1, .embed .brand { display: none; }
+  .views { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+  .views a { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--axis); color: var(--ink2); text-decoration: none; }
+  .views a:hover { color: var(--ink); }
+  .views a[aria-current="page"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  [hidden] { display: none !important; }
+  .embed .wrap { padding-block: 8px 32px; }
+  .brand { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .brand a { color: var(--ink2); }
+  .banner.stale { display: none; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--ink2); margin: 0 0 4px; overflow-wrap: anywhere; }
+  .fine { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+  .fine.ev { display: none; margin-top: -10px; }
+  .banner { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 8px 12px; font-size: 12px; margin: 0 0 14px; display: none; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .tile .lab { color: var(--ink2); font-size: 12px; }
+  .tile .val { font-size: 26px; font-weight: 600; line-height: 1.25; }
+  .tile .val small { font-size: 12px; font-weight: 400; color: var(--muted); }
+  .tile .d { font-size: 12px; color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .card h2 { font-size: 15px; margin: 0 0 2px; }
+  .card .desc { color: var(--ink2); font-size: 12px; margin: 0 0 12px; }
+  .bar-top { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 0 0 10px; }
+  .legend { display: flex; gap: 6px 8px; flex-wrap: wrap; }
+  .legend button, .modes button, .chips button {
+    font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--axis);
+    background: transparent; color: var(--ink2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .legend button[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+  .legend .sw { display: inline-flex; gap: 1px; }
+  .legend .sw i { width: 8px; height: 10px; display: inline-block; }
+  .legend .sw i:first-child { border-radius: 2px 0 0 2px; } .legend .sw i:last-child { border-radius: 0 2px 2px 0; }
+  .modes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .modes button.on, .chips button.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+  .chk { font-size: 12px; color: var(--ink2); display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+  .chart { width: 100%; position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+  .chart text { font-family: inherit; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; font-size: 13px; }
+  .tip { position: fixed; z-index: 9; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(0,0,0,.18); border-radius: 6px; padding: 8px 10px; font-size: 12px; display: none; width: max-content; max-width: 280px; }
+  .tip .tt { font-weight: 600; margin-bottom: 4px; }
+  .tip .tt em { font-style: normal; font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .tip .tn { color: var(--muted); }
+  .tip .te { color: var(--ink2); margin-top: 4px; padding-top: 3px; border-top: 1px solid var(--grid); }
+  td.ev { color: var(--ink2); font-size: 11px; }
+  .tip .tr { display: flex; justify-content: space-between; gap: 14px; line-height: 1.55; }
+  .tip .tr span { min-width: 0; overflow-wrap: anywhere; }
+  .tip .tr b { font-weight: 500; text-align: right; white-space: nowrap; }
+  .tip .tr.sum { border-bottom: 1px solid var(--grid); margin-bottom: 3px; padding-bottom: 2px; }
+  .tip .tr.sum b { font-weight: 700; }
+  .tip .tr.dim { color: var(--muted); }
+  .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+  .tw { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+  th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  th button:hover { color: var(--ink); }
+  th.sorted { color: var(--ink); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.dim { color: var(--muted); }
+  #rank td { white-space: nowrap; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  .role { display: inline-block; font-size: 10px; line-height: 1.35; padding: 0 5px; margin-left: 5px; border: 1px solid var(--axis); border-radius: 999px; vertical-align: 1px; font-weight: 500; white-space: nowrap; }
+  .role.r-공 { color: var(--w1); border-color: var(--w1); } .role.r-수 { color: var(--w2); border-color: var(--w2); }
+  .role.r-남 { color: var(--w3); border-color: var(--w3); } .role.r-녀 { color: var(--w4); border-color: var(--w4); }
+  th.hi { color: var(--ink); } td.hi { color: var(--ink); font-weight: 700; background: var(--page); }
+  .scroll-y { max-height: 360px; overflow-y: auto; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.7; overflow-wrap: anywhere; }
+  footer code { font-family: ui-monospace, Consolas, monospace; color: var(--ink2); }
+  @media (max-width: 560px) { .tile .val { font-size: 22px; } }
+</style>
+</head>
+<body>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get('embed') === '1') document.body.classList.add('embed');
+  var th = q.get('theme');
+  if (th === 'dark' || th === 'light') document.documentElement.dataset.theme = th;
+  window.addEventListener('message', function (e) {
+    if (e.origin !== location.origin) return;
+    var d = e.data;
+    if (d && d.type === 'teaz-theme' && (d.theme === 'dark' || d.theme === 'light')) {
+      document.documentElement.dataset.theme = d.theme;
+    }
+  });
+  if (window.parent !== window) {
+    var timer = null;
+    var report = function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        parent.postMessage({ type: 'teaz-height', height: document.documentElement.scrollHeight }, location.origin);
+      }, 150);
+    };
+    if (window.ResizeObserver) new ResizeObserver(report).observe(document.documentElement);
+    else window.addEventListener('resize', report);
+    window.addEventListener('load', report);
+  }
+})();
+</script>
+
+<div class="wrap">
+  <nav class="views" aria-label="서비스 선택"><a href="../">🫖 티즈</a><a href="./" aria-current="page">💬 탑툰챗</a></nav>
+  <h1>탑툰챗 캐릭터별 대화 모니터링</h1>
+  <p class="brand">탑툰챗 · 웹툰 캐릭터 AI 채팅 · 한국 <a href="https://chat.toptoon.com/" target="_blank" rel="noopener">chat.toptoon.com</a> · 일본 chat.toptoon.jp · 대만 chat.toptoon.net · Global chat.global.toptoon.com · 2026-03-13 런칭</p>
+  <p class="sub" id="sub"></p>
+  <p class="fine">chatCount = 각 시장 사이트가 캐릭터별로 공개하는 누적 대화 카운터. 시장(한국·일본·대만·Global)마다 따로 집계되며 같은 캐릭터도 시장별 id가 다름. 시장마다 누적 상위·최근 24시간 증가 상위 캐릭터만 개별 표시하고 나머지는 "그 외"로 합산(합계는 전체와 같음). 시간별·누적 차트는 자체 수집 시작(첫 샘플) 이후 증가분만 표시</p>
+  <p class="fine ev" id="evInfo"></p>
+  <div class="banner" id="banner">샘플(가짜) 데이터를 표시 중입니다. data.js 가 생성되면 자동으로 실제 값으로 바뀝니다.</div>
+  <div class="banner stale" id="stale"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>4개국 일일 대화량</h2>
+    <p class="desc">KST 00:00 마감 기준 일일 증가. 일일 증가 = 전날에도 있던 캐릭터의 chatCount 증가 합(시장별), 멀티 작품은 따로 더함. 기준값 = 4개국 캐릭터 누적 ÷ 런칭(2026-03-13) 이후 경과일</p>
+    <div class="bar-top"><div class="modes" id="rangeD" role="group" aria-label="기간"></div></div>
+    <div class="chart" id="chartD"></div>
+    <p class="note" id="noteD"></p>
+    <div class="tw scroll-y" style="margin-top:10px"><table id="dailyTable"></table></div>
+  </div>
+
+  <div class="card">
+    <h2 id="hA">시간별 증가량 (캐릭터별)</h2>
+    <p class="desc" id="dA">KST 정시 기준 구간별 chatCount 증가분. 막대 위 숫자와 선은 합산. 시장 색상군 안에서 밝기로 캐릭터 구분</p>
+    <div class="bar-top">
+      <div class="modes" id="metA" role="group" aria-label="지표"></div>
+      <div class="modes" id="modeA" role="group" aria-label="표시 방식"></div>
+      <div class="modes" id="rangeA" role="group" aria-label="기간"></div>
+    </div>
+    <div class="legend" id="legA" style="margin-bottom:10px"></div>
+    <div class="chart" id="chartA"></div>
+    <p class="note" id="noteA"></p>
+  </div>
+
+  <div class="card">
+    <h2 id="hB">누적 메시지 추이</h2>
+    <p class="desc" id="dB">수집 샘플별 누적 chatCount. 누적 상위 6개 캐릭터만 색상 강조(시장 색상), 나머지는 회색</p>
+    <div class="bar-top">
+      <div class="modes" id="metB" role="group" aria-label="지표"></div>
+      <label class="chk"><input type="checkbox" id="logB"> 로그 스케일</label>
+    </div>
+    <div class="chart" id="chartB"></div>
+  </div>
+
+  <div class="card">
+    <h2 id="hC">일단위 대화수</h2>
+    <p class="desc" id="dC">KST 자정 기준 일별 증가분(전일 마지막 샘플 대비). 수집 시작일은 첫 샘플부터. 시장 색상 규칙은 시간별 차트와 동일</p>
+    <div class="bar-top">
+      <div class="modes" id="metC" role="group" aria-label="지표"></div>
+      <div class="modes" id="modeC" role="group" aria-label="표시 방식"></div>
+    </div>
+    <div class="legend" id="legC" style="margin-bottom:10px"></div>
+    <div class="chart" id="chartC"></div>
+    <p class="note" id="noteC"></p>
+    <div class="tw scroll-y" style="margin-top:10px"><table id="dayTable"></table></div>
+  </div>
+
+  <div class="card" hidden>
+    <h2>속성별 인기 (공·수·남·녀 / 태그)</h2>
+    <p class="desc">속성 태그 = 어미가 공·수·남·녀인 태그(집착공·미인수·능글남·유혹녀 등). 막대 색은 태그 어미의 역할색, 회색은 설정 태그(학원물·BL 등). 태그는 API 원값 그대로 표기</p>
+    <div class="tw"><table id="roleTable"></table></div>
+    <div class="bar-top" style="margin-top:14px">
+      <div class="modes" id="metT" role="group" aria-label="지표"></div>
+      <div class="modes" id="aggT" role="group" aria-label="값 방식"></div>
+    </div>
+    <div class="bar-top">
+      <div class="chips" id="roleChips" style="margin:0" role="group" aria-label="역할"></div>
+      <label class="chk"><input type="checkbox" id="minT" checked> 2명 이상 태그만</label>
+      <label class="chk"><input type="checkbox" id="allTagsT"> 설정 태그 포함</label>
+    </div>
+    <div class="chart" id="chartT"></div>
+    <p class="note">한 캐릭터는 자기 태그 전부에 기여하므로 태그 간 합계는 중복된다. 캐릭터 수가 적은 태그는 한 명의 영향이 크다(n 표시). 집착공과 집착남은 별개 태그로 취급하며 어미를 떼어 비교하지 않는다.</p>
+  </div>
+
+  <div class="card">
+    <h2>캐릭터 순위</h2>
+    <p class="desc">헤더를 눌러 정렬. 순위는 누적 기준 고정. 스파크라인은 최근 24개 시간 구간 증가량</p>
+    <div class="chips" id="chips"></div>
+    <div class="tw"><table id="rank"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>시장별 집계</h2>
+    <div class="tw"><table id="workTable"></table></div>
+  </div>
+
+  <footer>
+    데이터: <code>data.js</code> (<code>collect.py</code>가 10분마다 재생성, 원본 <code>toptoon.db</code>) · 일간 이력: <code>history_ref.json</code> (2026-08-18~10-23, 참고 사이트 값)<br>
+    출처: 시장별 <code>GET /api/characters</code>, <code>/api/content</code>의 <code>chatCount</code>, <code>likeCount</code> (chat.toptoon.com · chat.toptoon.jp · chat.toptoon.net · chat.global.toptoon.com) · 집계 시각은 KST
+  </footer>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+/* 캐시 우회: 호스팅(GitHub Pages) CDN 캐시 때문에 지난 data.js 가 보이지 않도록 매 로드마다 쿼리 부여 */
+(function () { var v = Date.now(); document.write('<script src="data.js?v=' + v + '"><\/script><script src="events.js?v=' + v + '"><\/script>'); })();
+</script>
+<script>
+(function () {
+'use strict';
+
+/* ---------- 기본 유틸 ---------- */
+var D = window.TOPTOON_DATA || {};
+var HOUR = 3600000, DAY = 24 * HOUR, KST = 9 * HOUR, GAP_MS = 12 * 60000;
+var LAUNCH = Infinity; /* 탑툰챗: 런칭 이후 누적값이라 첫 샘플을 기준(0점)으로 */
+var WD = ['일', '월', '화', '수', '목', '금', '토'];
+var nf = new Intl.NumberFormat('ko-KR');
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function p2(n) { return (n < 10 ? '0' : '') + n; }
+function fN(v) { return (v == null || !isFinite(v)) ? '—' : nf.format(Math.round(v)); }
+function fD(v) { if (v == null || !isFinite(v)) return '—'; var r = Math.round(v); return (r > 0 ? '+' : '') + nf.format(r); }
+function kd(ms) { return new Date(ms + KST); }
+function fMD(ms) { var d = kd(ms); return (d.getUTCMonth() + 1) + '/' + d.getUTCDate(); }
+function fHM(ms) { var d = kd(ms); return p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()); }
+function fMDHM(ms) { return fMD(ms) + ' ' + fHM(ms); }
+function align(x, step) { return Math.floor((x + KST) / step) * step - KST; }
+function niceScale(max, tk) {
+  if (!(max > 0)) return { top: 1, step: 1 };
+  var raw = max / tk, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  var s = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10, step = s * p;
+  return { step: step, top: Math.ceil(max / step - 1e-9) * step };
+}
+function hexToHsl(h) {
+  h = String(h).trim().replace('#', '');
+  if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
+  var r = parseInt(h.substr(0, 2), 16) / 255, g = parseInt(h.substr(2, 2), 16) / 255, b = parseInt(h.substr(4, 2), 16) / 255;
+  var mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, s = 0, hh = 0, d = mx - mn;
+  if (d) {
+    s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    hh = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    hh /= 6;
+  }
+  return [hh, s, l];
+}
+function hslToHex(a) {
+  var h = a[0], s = a[1], l = a[2];
+  function f(p, q, t) { if (t < 0) t += 1; if (t > 1) t -= 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; }
+  var r, g, b;
+  if (!s) { r = g = b = l; } else {
+    var q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    r = f(p, q, h + 1 / 3); g = f(p, q, h); b = f(p, q, h - 1 / 3);
+  }
+  function x(v) { var n = Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16); return n.length < 2 ? '0' + n : n; }
+  return '#' + x(r) + x(g) + x(b);
+}
+
+/* ---------- 이벤트 마커 (events.js, 선택) ---------- */
+var EV = (function () {
+  var a = window.TOPTOON_EVENTS, out = [];
+  if (!Array.isArray(a)) return out;
+  a.forEach(function (e) {
+    if (!e || typeof e !== 'object') return;
+    var ts = Date.parse(e.t);
+    if (!isFinite(ts)) return;
+    out.push({ ts: ts, label: (e.label == null || e.label === '') ? '이벤트' : String(e.label), note: e.note == null ? '' : String(e.note) });
+  });
+  out.sort(function (x, y) { return x.ts - y.ts; });
+  return out;
+})();
+function evTextW(str) { var w = 0; for (var i = 0; i < str.length; i++) w += str.charCodeAt(i) > 255 ? 11 : 6; return w; }
+/* marks = [{ev, x}] (x 오름차순). 라벨은 yText 기준선, 점선은 yText+3 ~ yEnd. 폭 500 미만이면 시각 생략, 겹치는 라벨은 생략(선만) */
+function evSvg(marks, W, yText, yEnd) {
+  var out = ['<g pointer-events="none">'], lastEnd = -1e9, withTime = W >= 500;
+  marks.forEach(function (m) {
+    var txt = m.ev.label + (withTime ? ' ' + fHM(m.ev.ts) : ''), w = evTextW(txt), x = m.x;
+    out.push('<line x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + (yText + 3) + '" y2="' + yEnd + '" style="stroke:var(--muted)" stroke-width="1" stroke-dasharray="4 3"/>');
+    var atEnd = x + 3 + w > W - 2, x0 = atEnd ? x - 3 - w : x + 3;
+    if (x0 < lastEnd + 4 || x0 < 2) return;
+    lastEnd = x0 + w;
+    out.push('<text x="' + (atEnd ? x - 3 : x + 3).toFixed(1) + '" y="' + yText + '" text-anchor="' + (atEnd ? 'end' : 'start') + '" font-size="11" style="fill:var(--muted);stroke:var(--surface);stroke-width:3px;paint-order:stroke">' + esc(txt) + '</text>');
+  });
+  out.push('</g>');
+  return out.join('');
+}
+function evTipHtml(it) {
+  var l = EV.filter(function (e) { return e.ts >= it.start && e.ts < it.end; });
+  return l.map(function (e) { return '<div class="te">이벤트: ' + esc(e.label + ' ' + fHM(e.ts)) + '</div>'; }).join('');
+}
+
+/* ---------- 역할(공/수/남/녀) / 속성 태그 ---------- */
+var ROLES = ['공', '수', '남', '녀'];
+var ROLE_COLOR = { '공': 'var(--w1)', '수': 'var(--w2)', '남': 'var(--w3)', '녀': 'var(--w4)' };
+/* 태그 어미가 공/수/남/녀면 속성 태그(그 어미가 역할), 아니면 설정 태그('') */
+function tagRole(t) { t = String(t); return t.length >= 2 && ROLES.indexOf(t.slice(-1)) >= 0 ? t.slice(-1) : ''; }
+/* role 이 없는 구데이터 폴백: 속성 태그 어미 최빈값(동률이면 먼저 나온 것) */
+function deriveRole(tags) {
+  var cnt = {}, best = '', bn = 0;
+  tags.forEach(function (t) { var r = tagRole(t); if (r) cnt[r] = (cnt[r] || 0) + 1; });
+  tags.forEach(function (t) { var r = tagRole(t); if (r && cnt[r] > bn) { best = r; bn = cnt[r]; } });
+  return best;
+}
+function roleBadge(r) { return r ? '<span class="role r-' + r + '">' + r + '</span>' : ''; }
+function mkChar(c) {
+  var tags = [];
+  (Array.isArray(c.tags) ? c.tags : []).forEach(function (t) { if (typeof t === 'string' && t && tags.indexOf(t) < 0) tags.push(t); });
+  var role = ROLES.indexOf(c.role) >= 0 ? c.role : deriveRole(tags);
+  return { id: c.id, name: c.name || c.id, work: c.work || '기타', role: role, tags: tags, attrTags: tags.filter(tagRole) };
+}
+
+/* ---------- 모델 ---------- */
+function build() {
+  var chars = [], idx = {};
+  (D.characters || []).forEach(function (c) {
+    if (!c || c.id == null || idx[c.id] != null) return;
+    idx[c.id] = chars.length; chars.push(mkChar(c));
+  });
+  var samples = (D.samples || []).map(function (s) {
+    return { ts: Date.parse(s.t), m: s.m || {}, l: s.l || {} };
+  }).filter(function (s) { return isFinite(s.ts); }).sort(function (a, b) { return a.ts - b.ts; });
+  samples.forEach(function (s) {
+    Object.keys(s.m).forEach(function (id) {
+      if (idx[id] == null) { idx[id] = chars.length; chars.push(mkChar({ id: id })); }
+    });
+  });
+  var C = chars.length, N = samples.length;
+  var works = [], widx = {};
+  chars.forEach(function (c, i) {
+    if (widx[c.work] == null) { widx[c.work] = works.length; works.push({ name: c.work, members: [] }); }
+    c.wi = widx[c.work]; c.k = works[c.wi].members.length; works[c.wi].members.push(i);
+  });
+  var order = []; works.forEach(function (w) { w.members.forEach(function (i) { order.push(i); }); });
+
+  var cum = [], lk = [], tot = new Array(N), totL = new Array(N);
+  chars.forEach(function (c, ci) {
+    var a = new Array(N), b = new Array(N), pv = 0, pl = 0;
+    for (var k = 0; k < N; k++) {
+      var v = samples[k].m[c.id], l = samples[k].l[c.id];
+      if (typeof v === 'number' && isFinite(v)) pv = v;
+      if (typeof l === 'number' && isFinite(l)) pl = l;
+      a[k] = pv; b[k] = pl;
+    }
+    cum.push(a); lk.push(b);
+  });
+  for (var k = 0; k < N; k++) { var s = 0, sl = 0; for (var ci = 0; ci < C; ci++) { s += cum[ci][k]; sl += lk[ci][k]; } tot[k] = s; totL[k] = sl; }
+  var origin = N ? Math.min(LAUNCH, samples[0].ts) : LAUNCH;
+  var lastTs = N ? samples[N - 1].ts : null;
+
+  var M = { chars: chars, works: works, order: order, samples: samples, cum: cum, lk: lk, tot: tot, totL: totL, C: C, N: N, origin: origin, lastTs: lastTs };
+
+  /* 마지막으로 ts < T 인 샘플 인덱스 (없으면 -1) */
+  M.idxBefore = function (T) {
+    var lo = 0, hi = N - 1, r = -1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (samples[mid].ts < T) { r = mid; lo = mid + 1; } else hi = mid - 1; }
+    return r;
+  };
+  /* 지표 key: 'msg'(기본, chatCount) | 'like'(likeCount). 모든 누적·구간 계산이 key 로 배열만 바꾼다 */
+  M.series = function (ci, key) { return key === 'like' ? (ci < 0 ? totL : lk[ci]) : (ci < 0 ? tot : cum[ci]); };
+  /* 시각 T 의 누적값(샘플 사이 선형보간, 첫 샘플 이전은 origin=0 에서 선형) */
+  M.valAt = function (ci, T, key) {
+    var arr = M.series(ci, key);
+    if (!N) return 0;
+    if (T <= origin) return arr[0];
+    if (T >= lastTs) return arr[N - 1];
+    if (T <= samples[0].ts) return arr[0];
+    for (var k = 1; k < N; k++) {
+      if (samples[k].ts >= T) {
+        var a = samples[k - 1], b = samples[k], f = (T - a.ts) / (b.ts - a.ts);
+        return arr[k - 1] + (arr[k] - arr[k - 1]) * f;
+      }
+    }
+    return arr[N - 1];
+  };
+  /* 최근 h 시간 증가량 (런칭 이전으로는 못 가므로 origin 에서 clamp) */
+  M.win = function (ci, h, key) {
+    if (!N) return { d: null, span: 0, full: false };
+    var T0 = Math.max(origin, lastTs - h * HOUR);
+    return { d: M.valAt(ci, lastTs, key) - M.valAt(ci, T0, key), span: lastTs - T0, full: lastTs - h * HOUR >= origin };
+  };
+  /* 마지막으로 ts <= T 인 샘플 인덱스 (없으면 -1) */
+  M.idxAtOrBefore = function (T) {
+    var lo = 0, hi = N - 1, r = -1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (samples[mid].ts <= T) { r = mid; lo = mid + 1; } else hi = mid - 1; }
+    return r;
+  };
+  /* 경계 시각 B 의 누적값. 직전 샘플이 12분 이내면 그 값, 더 멀면(샘플 공백) 전후 샘플로 선형 보간, 데이터 끝이면 이월 */
+  M.cumAt = function (B, ci, key) {
+    var pi = M.idxAtOrBefore(B);
+    if (pi < 0) return { v: N ? (key === 'like' ? lk[ci] : cum[ci])[0] : 0, interp: false };
+    var arr = key === 'like' ? lk[ci] : cum[ci], pt = samples[pi].ts, pv = arr[pi];
+    if (B - pt <= GAP_MS) return { v: pv, interp: false };
+    if (pi + 1 < N) {
+      var nt = samples[pi + 1].ts, nv = arr[pi + 1];
+      return { v: Math.round(pv + (nv - pv) * (B - pt) / (nt - pt)), interp: true };
+    }
+    return { v: pv, interp: false };
+  };
+  /* 기간(step) 버킷: d = cumAt(구간끝) - cumAt(구간시작). 첫 구간의 기준은 0. interpS/interpE = 시작/끝 경계가 보간됨 */
+  M.periods = function (step, key) {
+    var out = [];
+    if (!N) return out;
+    var s0 = align(origin, step), s1 = align(lastTs, step);
+    var prev = [], prevI = false;
+    for (var i = 0; i < C; i++) { var c0 = M.cumAt(s0, i, key); prev.push(c0.v); if (c0.interp) prevI = true; }
+    var prevE = M.idxBefore(s0);
+    for (var s = s0; s <= s1; s += step) {
+      var e = M.idxBefore(s + step), cnt = e - prevE, d = [], t = 0, intE = false;
+      for (var ci = 0; ci < C; ci++) {
+        var c = M.cumAt(s + step, ci, key);
+        if (c.interp) intE = true;
+        d.push(c.v - prev[ci]); prev[ci] = c.v; t += d[ci];
+      }
+      out.push({ start: s, end: s + step, d: d, total: t, n: cnt, gap: cnt === 0 && !prevI && !intE, partial: s === s1,
+        interpS: prevI, interpE: intE, interp: prevI || intE,
+        afterGap: out.length > 0 && out[out.length - 1].gap });
+      prevE = e; prevI = intE;
+    }
+    return out;
+  };
+  M.hours = M.periods(HOUR);
+  M.days = M.periods(DAY);
+  M.today = M.days.length ? M.days[M.days.length - 1] : null;
+  /* 좋아요(likeCount) 버전 — 좋아요 취소로 구간 Δ 가 음수일 수 있음(그대로 유지) */
+  M.hoursL = M.periods(HOUR, 'like');
+  M.daysL = M.periods(DAY, 'like');
+  M.todayL = M.daysL.length ? M.daysL[M.daysL.length - 1] : null;
+  M.totalL = N ? totL[N - 1] : 0;
+
+  /* 캐릭터 행 */
+  var total = N ? tot[N - 1] : 0;
+  var rows = chars.map(function (c, ci) {
+    var cu = N ? cum[ci][N - 1] : 0;
+    return { ci: ci, name: c.name, work: c.work, wi: c.wi, cum: cu, share: total ? cu / total : 0,
+      d1: M.win(ci, 1).d, d3: M.win(ci, 3).d, dt: M.today ? M.today.d[ci] : null,
+      like: N ? lk[ci][N - 1] : null, dtL: M.todayL ? M.todayL.d[ci] : null,
+      spark: M.hours.slice(-24).map(function (b) { return b.d[ci]; }) };
+  });
+  var byCum = rows.slice().sort(function (a, b) { return b.cum - a.cum; });
+  byCum.forEach(function (r, i) { r.rank = i + 1; });
+  M.rows = rows; M.total = total;
+  /* 태그별 집계. key = rows 의 필드('cum'|'dt'|'d1'|'d3'|'like'). 캐릭터는 자기 태그 전부에 기여(태그 간 중복 집계) */
+  M.tagStats = function (key) {
+    var map = Object.create(null), out = [];
+    chars.forEach(function (c, ci) {
+      var v = rows[ci][key]; if (typeof v !== 'number' || !isFinite(v)) v = 0;
+      c.tags.forEach(function (t) {
+        var o = map[t];
+        if (!o) { o = map[t] = { tag: t, role: tagRole(t), n: 0, sum: 0, avg: 0, members: [] }; out.push(o); }
+        o.n++; o.sum += v; o.members.push({ ci: ci, v: v });
+      });
+    });
+    out.forEach(function (o) { o.avg = o.sum / o.n; o.members.sort(function (a, b) { return b.v - a.v; }); });
+    return out;
+  };
+  return M;
+}
+var M = build();
+
+/* ---------- 상태 / 색상 ---------- */
+var state = { metric: 'msg', hidden: {}, modeA: 'stack', modeC: 'stack', rangeA: 48, logB: false, sortKey: 'cum', sortDir: -1, wfilter: '', tagMetric: 'cum', tagAgg: 'avg', tagRole: '', tagMin2: true, tagAll: false };
+
+/* 지표(메시지/좋아요)별 문구와 데이터 접근자. state.metric 으로 선택 */
+var MET = {
+  msg: {
+    label: '메시지', other: 'like', otherLabel: '좋아요', cumKey: 'cum',
+    hH: '시간별 증가량 (캐릭터별)', hDesc: 'KST 정시 기준 구간별 chatCount 증가분. 막대 위 숫자와 선은 합산. 시장 색상군 안에서 밝기로 캐릭터 구분',
+    hAria: '시간별 증가량 누적 막대 차트',
+    bH: '누적 메시지 추이', bDesc: '수집 샘플별 누적 chatCount. 누적 상위 6개 캐릭터만 색상 강조(시장 색상), 나머지는 회색',
+    bAria: '누적 메시지 추이 꺾은선 차트', bSum: '누적 합계',
+    cH: '일단위 대화수', cDesc: 'KST 자정 기준 일별 증가분(전일 마지막 샘플 대비). 수집 시작일은 첫 샘플부터. 시장 색상 규칙은 시간별 차트와 동일',
+    cAria: '일단위 증가량 누적 막대 차트', none: '증가 없음'
+  },
+  like: {
+    label: '좋아요', other: 'msg', otherLabel: '메시지', cumKey: 'like',
+    hH: '시간별 좋아요 증가량 (캐릭터별)', hDesc: 'KST 정시 기준 구간별 likeCount 증감분. 좋아요 취소로 감소할 수 있으며 감소분은 0 아래로 표시. 막대 위 숫자와 선은 순합산',
+    hAria: '시간별 좋아요 증감 누적 막대 차트',
+    bH: '누적 좋아요 추이', bDesc: '수집 샘플별 누적 likeCount. 누적 상위 6개 캐릭터만 색상 강조(시장 색상), 나머지는 회색',
+    bAria: '누적 좋아요 추이 꺾은선 차트', bSum: '누적 좋아요 합계',
+    cH: '일단위 좋아요', cDesc: 'KST 자정 기준 일별 likeCount 증감분(전일 마지막 샘플 대비, 취소 반영). 수집 시작일은 첫 샘플부터. 시장 색상 규칙은 시간별 차트와 동일',
+    cAria: '일단위 좋아요 증감 누적 막대 차트', none: '변동 없음'
+  }
+};
+function curMet() { return MET[state.metric]; }
+/* 선택 지표의 시간별·일별·오늘 */
+function curData(key) {
+  key = key || state.metric;
+  return key === 'like' ? { hours: M.hoursL, days: M.daysL, today: M.todayL, total: M.totalL } : { hours: M.hours, days: M.days, today: M.today, total: M.total };
+}
+
+function readColors() {
+  var cs = getComputedStyle(document.documentElement);
+  var base = [];
+  for (var i = 1; i <= 7; i++) base.push(cs.getPropertyValue('--w' + i).trim() || '#898781');
+  var col = M.chars.map(function (c) {
+    var b = base[Math.min(c.wi, 6)], n = M.works[c.wi].members.length;
+    var hsl = hexToHsl(b);
+    var dl = n === 1 ? 0 : 0.13 - 0.26 * c.k / (n - 1);
+    hsl[2] = Math.max(.2, Math.min(.8, hsl[2] + dl));
+    return hslToHex(hsl);
+  });
+  return { char: col, work: M.works.map(function (w, i) { return base[Math.min(i, 6)]; }) };
+}
+var COL = readColors();
+
+/* ---------- 툴팁 ---------- */
+var tip = $('tip');
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.style.display = 'block';
+  var r = tip.getBoundingClientRect(), nx = x + 14, ny = y + 14;
+  if (nx + r.width > window.innerWidth - 8) nx = x - r.width - 14;
+  if (nx < 8) nx = 8;
+  if (ny + r.height > window.innerHeight - 8) ny = window.innerHeight - r.height - 8;
+  if (ny < 8) ny = 8;
+  tip.style.left = nx + 'px'; tip.style.top = ny + 'px';
+}
+function hideTip() { tip.style.display = 'none'; }
+document.addEventListener('pointerdown', function (e) { if (!e.target.closest || !e.target.closest('.chart')) hideTip(); });
+
+/* ---------- 범례 / 토글 ---------- */
+function renderLegend(id) {
+  var h = M.works.map(function (w, i) {
+    var sw = w.members.map(function (ci) { return '<i style="background:' + COL.char[ci] + '"></i>'; }).join('');
+    return '<button type="button" data-w="' + esc(w.name) + '" aria-pressed="' + (!state.hidden[w.name]) + '"><span class="sw">' + sw + '</span>' +
+      esc(w.name) + ' <span style="color:var(--muted)">' + w.members.length + '</span></button>';
+  }).join('');
+  var el = $(id); el.innerHTML = h;
+  el.onclick = function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var n = b.getAttribute('data-w'); state.hidden[n] = !state.hidden[n];
+    hideTip(); renderLegend('legA'); renderLegend('legC'); renderA(); renderC();
+  };
+}
+function segmented(id, opts, cur, onPick) {
+  var el = $(id);
+  el.innerHTML = opts.map(function (o) { return '<button type="button" data-v="' + o[0] + '" class="' + (String(cur) === String(o[0]) ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+  el.onclick = function (e) { var b = e.target.closest('button'); if (!b) return; onPick(b.getAttribute('data-v')); };
+}
+
+/* ---------- 공통 스택 막대 차트 (시간별 / 일별) ---------- */
+function stackChart(host, items, o) {
+  if (!items.length) { host.innerHTML = '<div class="empty">데이터 없음</div>'; return; }
+  var n = items.length;
+  var W = Math.max(300, host.clientWidth), Ht = W < 520 ? 300 : 340;
+  var ml = W < 520 ? 46 : 56, mr = 8, mt = 26, mb = 50;
+  var pw = W - ml - mr, ph = Ht - mt - mb;
+  var order = M.order.filter(function (ci) { return !state.hidden[M.chars[ci].work]; });
+  var anyHidden = order.length !== M.order.length;
+  /* clip = 그리기용(음수는 0으로 절단), real = 표시 중인 시장의 실제 부호 있는 합(감소 포함), hasNeg = 음수 증가분 존재 */
+  var clip = items.map(function (it) { var s = 0; order.forEach(function (ci) { s += Math.max(0, it.d[ci]); }); return s; });
+  var real = items.map(function (it) { var s = 0; order.forEach(function (ci) { s += it.d[ci]; }); return s; });
+  var hasNeg = items.map(function (it) { return !it.gap && order.some(function (ci) { return it.d[ci] < 0; }); });
+  /* 막대로 그려지는 높이: 누적막대=절단 합, 합산만=실제 합을 0으로 절단 */
+  var drawn = o.mode === 'sum' ? real.map(function (v) { return Math.max(0, v); }) : clip;
+  var mx = Math.max.apply(null, drawn.concat([0]));
+  /* o.negAxis(좋아요)일 때만 음수(감소·취소)를 0 아래로 쌓는다. neg[i] = 0 아래로 내려가는 길이. 메시지는 기존대로 음수 절단(경계 보간 잔차 표시 안 함) */
+  var negAxis = !!o.negAxis;
+  var neg = items.map(function (it, i) {
+    if (it.gap || !negAxis) return 0;
+    if (o.mode === 'sum') return Math.max(0, -real[i]);
+    var s = 0; order.forEach(function (ci) { s += Math.max(0, -it.d[ci]); }); return s;
+  });
+  var nmx = Math.max.apply(null, neg.concat([0]));
+  var sc = niceScale(Math.max(mx, nmx), 5);
+  var top = Math.max(sc.step, Math.ceil(mx / sc.step - 1e-9) * sc.step), bot = Math.ceil(nmx / sc.step - 1e-9) * sc.step;
+  function Y(v) { return mt + ph - (v + bot) / (top + bot) * ph; }
+  var band = pw / n, bw = Math.max(2, Math.min(band * 0.72, 44));
+  var sumColor = 'var(--ink2)';
+  var s = ['<svg viewBox="0 0 ' + W + ' ' + Ht + '" role="img" aria-label="' + esc(o.aria) + '">'];
+  for (var v = -bot; v <= top + 1e-9; v += sc.step) {
+    var y = Y(v), z = Math.abs(v) < 1e-9;
+    s.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + y + '" y2="' + y + '" style="stroke:' + (z ? 'var(--axis)' : 'var(--grid)') + '" stroke-width="1"/>');
+    s.push('<text x="' + (ml - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" style="fill:var(--muted)">' + nf.format(z ? 0 : v) + '</text>');
+  }
+  s.push('<rect id="hl" x="0" y="' + mt + '" width="' + band + '" height="' + ph + '" style="fill:var(--ink)" opacity="0" />');
+
+  var every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(pw / (o.lw || 34)))), 1);
+  var lblEvery = Math.max(1, Math.ceil(40 / band));
+  var lastKey = null, linePts = [], lbls = [];
+  items.forEach(function (it, i) {
+    var x = ml + i * band + (band - bw) / 2, cx = x + bw / 2;
+    if (it.gap) {
+      s.push('<line x1="' + (cx - bw / 2) + '" x2="' + (cx + bw / 2) + '" y1="' + Y(0) + '" y2="' + Y(0) + '" style="stroke:var(--muted)" stroke-width="2" stroke-dasharray="3 3"/>');
+      linePts.push(null);
+    } else {
+      s.push('<g' + (it.partial ? ' opacity=".6"' : '') + '>');
+      if (o.mode === 'sum') {
+        if (drawn[i] > 0) s.push(barPath(x, Y(0), Y(drawn[i]), bw, sumColor));
+        else if (negAxis && real[i] < 0) s.push('<rect x="' + x + '" y="' + Y(0) + '" width="' + bw + '" height="' + (Y(real[i]) - Y(0)) + '" fill-opacity=".55" style="fill:' + sumColor + ';stroke:var(--surface);stroke-width:1.2"/>');
+      } else {
+        var acc = 0, segs = [];
+        order.forEach(function (ci) { var d = Math.max(0, it.d[ci]); if (d <= 0) return; segs.push([ci, acc, acc + d]); acc += d; });
+        segs.forEach(function (sg, j) {
+          var y1 = Y(sg[2]), y0 = Y(sg[1]), h = y0 - y1;
+          if (h < 0.4) return;
+          if (j === segs.length - 1) s.push(barPath(x, y0, y1, bw, COL.char[sg[0]]));
+          else s.push('<rect x="' + x + '" y="' + y1 + '" width="' + bw + '" height="' + h + '" style="fill:' + COL.char[sg[0]] + ';stroke:var(--surface);stroke-width:1.2"/>');
+        });
+        var accN = 0;
+        if (negAxis) order.forEach(function (ci) {
+          var d = -Math.min(0, it.d[ci]); if (d <= 0) return;
+          var ya = Y(-accN), yb = Y(-(accN + d)); accN += d;
+          if (yb - ya < 0.4) return;
+          s.push('<rect x="' + x + '" y="' + ya + '" width="' + bw + '" height="' + (yb - ya) + '" fill-opacity=".55" style="fill:' + COL.char[ci] + ';stroke:var(--surface);stroke-width:1.2"/>');
+        });
+      }
+      if (it.interp) {
+        var ih = Y(0) - Y(drawn[i]);
+        if (ih >= 0.4) s.push('<rect x="' + x + '" y="' + Y(drawn[i]) + '" width="' + bw + '" height="' + ih + '" fill="none" style="stroke:var(--muted)" stroke-width="1" stroke-dasharray="3 2" pointer-events="none"/>');
+      }
+      s.push('</g>');
+      linePts.push([cx, Y(negAxis ? real[i] : Math.max(0, real[i]))]);
+      if ((n - 1 - i) % lblEvery === 0 && (real[i] !== 0 || clip[i] > 0)) {
+        lbls.push('<text x="' + cx + '" y="' + (Y(drawn[i]) - 7) + '" text-anchor="middle" font-size="' + (band < 30 ? 10 : 11) + '" style="fill:var(--ink);stroke:var(--surface);stroke-width:3px;paint-order:stroke">' + nf.format(Math.round(real[i])) + '</text>');
+      }
+    }
+    if ((n - 1 - i) % every === 0) {
+      var lb = o.xl(it, i);
+      s.push('<text x="' + cx + '" y="' + (mt + ph + 16) + '" text-anchor="middle" font-size="11" style="fill:var(--ink2)">' + esc(lb.a) + '</text>');
+      if (lb.b && lb.key !== lastKey) {
+        s.push('<text x="' + cx + '" y="' + (mt + ph + 30) + '" text-anchor="middle" font-size="10" style="fill:var(--muted)">' + esc(lb.b) + '</text>');
+      }
+      lastKey = lb.key;
+    }
+  });
+  if (o.line) {
+    var path = '', open = false;
+    linePts.forEach(function (p) { if (!p) { open = false; return; } path += (open ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); open = true; });
+    s.push('<path d="' + path + '" fill="none" style="stroke:var(--ink)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+    if (n <= 60) linePts.forEach(function (p) { if (p) s.push('<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3" style="fill:var(--ink);stroke:var(--surface)" stroke-width="1.5"/>'); });
+  }
+  s.push(lbls.join(""));
+  if (o.kind === 'hour' && EV.length) {
+    var marks = [];
+    EV.forEach(function (ev) {
+      for (var i = 0; i < n; i++) {
+        if (ev.ts >= items[i].start && ev.ts < items[i].end) { marks.push({ ev: ev, x: ml + (i + (ev.ts - items[i].start) / (items[i].end - items[i].start)) * band }); break; }
+      }
+    });
+    if (marks.length) s.push(evSvg(marks, W, 11, mt + ph));
+  }
+  s.push("</svg>");
+  host.innerHTML = s.join('');
+
+  var svg = host.firstChild, hl = svg.querySelector('#hl');
+  function pick(e) {
+    var r = svg.getBoundingClientRect(), vx = (e.clientX - r.left) * (W / r.width);
+    var i = Math.floor((vx - ml) / band);
+    if (i < 0 || i >= n || vx < ml || vx > W - mr) { hl.setAttribute('opacity', 0); hideTip(); return; }
+    hl.setAttribute('x', ml + i * band); hl.setAttribute('opacity', .07);
+    showTip(stackTip(items[i], order, anyHidden, real[i], hasNeg[i], o), e.clientX, e.clientY);
+  }
+  svg.addEventListener('pointermove', pick);
+  svg.addEventListener('pointerdown', pick);
+  svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { hl.setAttribute('opacity', 0); hideTip(); } });
+}
+function barPath(x, y0, y1, w, fill) {
+  var h = y0 - y1, r = Math.min(4, w / 2, h);
+  if (h < 0.4) return '';
+  return '<path d="M' + x + ',' + y0 + 'V' + (y1 + r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 + r) + 'V' + y0 + 'Z" style="fill:' + fill + ';stroke:var(--surface);stroke-width:1.2"/>';
+}
+function stackTip(it, order, anyHidden, vsum, hasNeg, o) {
+  var h = '<div class="tt">' + esc(o.title(it)) + (it.partial ? '<em>진행 중</em>' : '') + '</div>';
+  var evh = o.kind === 'hour' ? evTipHtml(it) : '';
+  if (it.gap) return h + '<div class="tn">수집 샘플 없음 (증가분은 다음 구간에 합산)</div>' + evh;
+  h += '<div class="tr sum"><span>합산' + (anyHidden ? ' (표시 중인 시장)' : '') + (hasNeg ? ' <small style="color:var(--muted);font-weight:400">(감소 포함)</small>' : '') + '</span><b>' + fD(vsum) + '</b></div>';
+  if (anyHidden) h += '<div class="tr dim"><span>전체 합산</span><b>' + fD(it.total) + '</b></div>';
+  var rows = order.map(function (ci) { return [ci, it.d[ci]]; }).filter(function (r) { return r[1] !== 0; })
+    .sort(function (a, b) { return b[1] - a[1]; });
+  var posRows = rows.filter(function (r) { return r[1] > 0; }), negRows = rows.filter(function (r) { return r[1] < 0; });
+  posRows.slice(0, 12).forEach(function (r) {
+    h += '<div class="tr"><span><i style="background:' + COL.char[r[0]] + '"></i>' + esc(M.chars[r[0]].name) + roleBadge(M.chars[r[0]].role) + '</span><b>' + fD(r[1]) + '</b></div>';
+  });
+  if (posRows.length > 12) {
+    var rest = 0; posRows.slice(12).forEach(function (r) { rest += r[1]; });
+    h += '<div class="tr dim"><span>그 외 ' + (posRows.length - 12) + '명</span><b>' + fD(rest) + '</b></div>';
+  }
+  negRows.forEach(function (r) {
+    h += '<div class="tr"><span><i style="background:' + COL.char[r[0]] + '"></i>' + esc(M.chars[r[0]].name) + roleBadge(M.chars[r[0]].role) + ' <small style="color:var(--muted)">감소</small></span><b>' + fD(r[1]) + '</b></div>';
+  });
+  if (!rows.length) h += '<div class="tn">' + (o.none || '증가 없음') + '</div>';
+  if (it.afterGap && o.kind === 'hour') h += '<div class="tn" style="margin-top:3px">직전 시간 수집 누락분 포함</div>';
+  if (it.interp) h += '<div class="tn" style="margin-top:3px">경계 보간(' + (it.interpS && it.interpE ? '시작·끝' : it.interpS ? '시작' : '끝') + '): 샘플 공백 구간을 선형 보간</div>';
+  if (o.extra) h += o.extra(it);
+  return h + evh;
+}
+
+/* ---------- Chart A: 시간별 ---------- */
+function renderA() {
+  var mt = curMet(), hrs = curData().hours;
+  var view = state.rangeA === 'all' ? hrs : hrs.slice(Math.max(0, hrs.length - state.rangeA));
+  var prevDay = null;
+  stackChart($('chartA'), view, {
+    mode: state.modeA, line: true, kind: 'hour', negAxis: state.metric === 'like', none: mt.none, aria: mt.hAria + (EV.length ? ' (이벤트 마커 포함)' : ''), lw: 34,
+    title: function (it) { return fMD(it.start) + ' ' + kd(it.start).getUTCHours() + '시 (' + p2(kd(it.start).getUTCHours()) + ':00~)'; },
+    xl: function (it) {
+      var h = kd(it.start).getUTCHours();
+      return { a: h + '시', key: fMD(it.start), b: fMD(it.start) };
+    }
+  });
+  var last = hrs.length ? hrs[hrs.length - 1] : null;
+  $('hA').textContent = mt.hH; $('dA').textContent = mt.hDesc;
+  $('noteA').textContent = last ? '옅게 표시된 마지막 막대(' + fMD(last.start) + ' ' + kd(last.start).getUTCHours() + '시)는 진행 중인 구간. 점선은 해당 시간에 수집 샘플이 없는 경우. 샘플 공백(절전 등) 구간은 경계 시각 값을 전후 샘플로 선형 보간(점선 테두리).' : '';
+}
+
+/* ---------- Chart C: 일단위 ---------- */
+function renderC() {
+  var mt = curMet(), days = curData().days;
+  var view = days.slice(Math.max(0, days.length - 30));
+  stackChart($('chartC'), view, {
+    mode: state.modeC, line: false, kind: 'day', negAxis: state.metric === 'like', none: mt.none, aria: mt.cAria, lw: 44,
+    title: function (it) { return fMD(it.start) + ' (' + WD[kd(it.start).getUTCDay()] + ')'; },
+    xl: function (it, i) { return { a: fMD(it.start), key: 'k' + i, b: it.partial ? '진행 중' : WD[kd(it.start).getUTCDay()] }; },
+    extra: function (it) {
+      var t = '';
+      if (it.partial && M.lastTs) t += '<div class="tn" style="margin-top:3px">~' + fHM(M.lastTs) + ' 기준 (진행 중)</div>';
+      if (it.start < M.origin + 1 && it.start + DAY > M.origin) t += '<div class="tn">수집 시작일: 첫 샘플부터</div>';
+      return t + '<div class="tn">샘플 ' + it.n + '개</div>';
+    }
+  });
+  var t = curData().today;
+  $('hC').textContent = mt.cH; $('dC').textContent = mt.cDesc;
+  $('noteC').textContent = t ? '오늘(' + fMD(t.start) + ') 막대는 ~' + fHM(M.lastTs) + ' 기준 진행 중. 최근 30일까지 차트에 표시하고, 표에는 전체 일자를 표시합니다.' : '';
+  renderDayTable();
+}
+function renderDayTable() {
+  var el = $('dayTable'), mt = curMet(), days = curData().days, oth = curData(mt.other).days;
+  if (!days.length) { el.innerHTML = '<tbody><tr><td class="dim">데이터 없음</td></tr></tbody>'; return; }
+  var h = '<thead><tr><th>일자</th><th class="num">' + mt.label + ' 합산 Δ</th><th class="num">' + mt.otherLabel + ' Δ</th><th>상위 3 캐릭터</th><th class="num">샘플 수</th>' + (EV.length ? '<th>이벤트</th>' : '') + '</tr></thead><tbody>';
+  days.map(function (d, i) { return [d, oth[i]]; }).reverse().forEach(function (pr) {
+    var d = pr[0], od = pr[1];
+    var tops = d.d.map(function (v, ci) { return [ci, v]; }).filter(function (r) { return r[1] > 0; })
+      .sort(function (a, b) { return b[1] - a[1]; }).slice(0, 3)
+      .map(function (r) { return esc(M.chars[r[0]].name) + ' ' + fD(r[1]); }).join(' · ');
+    h += '<tr><td>' + fMD(d.start) + ' (' + WD[kd(d.start).getUTCDay()] + ')' + (d.partial ? ' <span style="color:var(--muted)">진행 중 ~' + fHM(M.lastTs) + '</span>' : '') +
+      '</td><td class="num">' + fD(d.total) + '</td><td class="num">' + fD(od ? od.total : null) + '</td><td>' + (tops || '<span class="dim">—</span>') + '</td><td class="num">' + d.n + '</td>';
+    if (EV.length) {
+      h += '<td class="ev">' + EV.filter(function (e) { return e.ts >= d.start && e.ts < d.end; })
+        .map(function (e) { return esc(e.label + ' ' + fHM(e.ts)); }).join('<br>') + '</td>';
+    }
+    h += '</tr>';
+  });
+  el.innerHTML = h + '</tbody>';
+}
+
+/* ---------- Chart B: 누적 추이 ---------- */
+function renderB() {
+  var host = $('chartB'), mt0 = curMet(), CA = state.metric === 'like' ? M.lk : M.cum, CT = state.metric === 'like' ? M.totL : M.tot, CK = mt0.cumKey;
+  $('hB').textContent = mt0.bH; $('dB').textContent = mt0.bDesc;
+  if (!M.N) { host.innerHTML = '<div class="empty">데이터 없음</div>'; return; }
+  var W = Math.max(300, host.clientWidth), Ht = W < 520 ? 300 : 360;
+  var ml = W < 520 ? 46 : 56, mr = W < 520 ? 82 : 118, mt = 12, mb = 40;
+  var t0 = M.origin, t1 = Math.max(M.lastTs, t0 + 10 * 60000);
+  var evB = EV.filter(function (e) { return e.ts >= t0 && e.ts <= t1; });
+  if (evB.length) mt = 28;
+  var pw = W - ml - mr, ph = Ht - mt - mb;
+  var logS = state.logB;
+  var ymax = 1;
+  for (var ci = 0; ci < M.C; ci++) ymax = Math.max(ymax, M.N ? CA[ci][M.N - 1] : 0);
+  for (var k = 0; k < M.N; k++) for (ci = 0; ci < M.C; ci++) ymax = Math.max(ymax, CA[ci][k]);
+  var sc, topV, lmax;
+  if (logS) { lmax = Math.max(1, Math.ceil(Math.log10(Math.max(ymax, 10)) - 1e-9)); topV = Math.pow(10, lmax); }
+  else { sc = niceScale(ymax, 5); topV = sc.top; }
+  function X(t) { return ml + (t - t0) / (t1 - t0) * pw; }
+  function Y(v) {
+    if (logS) return mt + ph - Math.log10(Math.max(v, 1)) / lmax * ph;
+    return mt + ph - v / topV * ph;
+  }
+  var s = ['<svg viewBox="0 0 ' + W + ' ' + Ht + '" role="img" aria-label="' + mt0.bAria + '">'];
+  if (logS) {
+    for (var e = 0; e <= lmax; e++) {
+      var yy = Y(Math.pow(10, e));
+      s.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + yy + '" y2="' + yy + '" style="stroke:' + (e === 0 ? 'var(--axis)' : 'var(--grid)') + '"/>');
+      s.push('<text x="' + (ml - 6) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" style="fill:var(--muted)">' + nf.format(Math.pow(10, e)) + '</text>');
+    }
+  } else {
+    for (var v = 0; v <= topV + 1e-9; v += sc.step) {
+      var y = Y(v);
+      s.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + y + '" y2="' + y + '" style="stroke:' + (v === 0 ? 'var(--axis)' : 'var(--grid)') + '"/>');
+      s.push('<text x="' + (ml - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" style="fill:var(--muted)">' + nf.format(v) + '</text>');
+    }
+  }
+  /* x 눈금 */
+  var steps = [10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080], step = steps[steps.length - 1];
+  for (var q = 0; q < steps.length; q++) { if ((t1 - t0) / (steps[q] * 60000) <= Math.max(2, pw / 74)) { step = steps[q]; break; } }
+  var sms = step * 60000, first = Math.ceil((t0 + KST) / sms) * sms - KST, lastLbl = null;
+  for (var tt = first, ti = 0; tt <= t1; tt += sms, ti++) {
+    var x = X(tt), midnight = fHM(tt) === '00:00';
+    s.push('<line x1="' + x + '" x2="' + x + '" y1="' + (mt + ph) + '" y2="' + (mt + ph + 4) + '" style="stroke:var(--axis)"/>');
+    s.push('<text x="' + x + '" y="' + (mt + ph + 16) + '" text-anchor="middle" font-size="11" style="fill:var(--ink2)">' + fHM(tt) + '</text>');
+    var dk = fMD(tt);
+    if (dk !== lastLbl && (ti === 0 || midnight)) s.push('<text x="' + x + '" y="' + (mt + ph + 30) + '" text-anchor="middle" font-size="10" style="fill:var(--muted)">' + dk + '</text>');
+    if (ti === 0 || midnight) lastLbl = dk;
+  }
+  /* 선 */
+  var topIdx = M.rows.filter(function (r) { return !/:etc$/.test(M.chars[r.ci].id); }).sort(function (a, b) { return b[CK] - a[CK]; }).slice(0, 6).map(function (r) { return r.ci; });
+  function pathFor(ci) {
+    var p = '';
+    for (var k = 0; k < M.N; k++) p += (k ? 'L' : 'M') + X(M.samples[k].ts).toFixed(1) + ',' + Y(CA[ci][k]).toFixed(1);
+    return p;
+  }
+  M.order.forEach(function (ci) {
+    if (topIdx.indexOf(ci) >= 0) return;
+    s.push('<path d="' + pathFor(ci) + '" fill="none" style="stroke:var(--axis)" stroke-width="1.25" stroke-linejoin="round"/>');
+  });
+  topIdx.slice().reverse().forEach(function (ci) {
+    s.push('<path d="' + pathFor(ci) + '" fill="none" stroke="' + COL.char[ci] + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+  });
+  /* 끝 라벨 (겹침 회피) */
+  var labs = topIdx.map(function (ci) { return { ci: ci, y: Y(CA[ci][M.N - 1]) }; }).sort(function (a, b) { return a.y - b.y; });
+  for (var i = 1; i < labs.length; i++) if (labs[i].y < labs[i - 1].y + 13) labs[i].y = labs[i - 1].y + 13;
+  labs.forEach(function (l) {
+    s.push('<rect x="' + (X(M.lastTs) + 6) + '" y="' + (l.y - 4) + '" width="8" height="8" rx="2" fill="' + COL.char[l.ci] + '"/>');
+    s.push('<text x="' + (X(M.lastTs) + 18) + '" y="' + (l.y + 4) + '" font-size="11" style="fill:var(--ink2)">' + esc(M.chars[l.ci].name) + (M.chars[l.ci].role ? ' <tspan font-size="10" style="fill:' + ROLE_COLOR[M.chars[l.ci].role] + '">' + M.chars[l.ci].role + '</tspan>' : '') + '</text>');
+  });
+  /* 이벤트 마커 */
+  if (evB.length) s.push(evSvg(evB.map(function (e) { return { ev: e, x: X(e.ts) }; }), W, 13, mt + ph));
+  /* 호버 레이어 */
+  s.push('<line id="bx" y1="' + mt + '" y2="' + (mt + ph) + '" style="stroke:var(--muted)" stroke-dasharray="3 3" opacity="0"/>');
+  topIdx.forEach(function (ci, j) { s.push('<circle id="bd' + j + '" r="4" fill="' + COL.char[ci] + '" style="stroke:var(--surface)" stroke-width="2" opacity="0"/>'); });
+  s.push('<rect id="bhit" x="' + ml + '" y="' + mt + '" width="' + pw + '" height="' + ph + '" fill="transparent"/>');
+  s.push('</svg>');
+  host.innerHTML = s.join('');
+
+  var svg = host.firstChild, bx = svg.querySelector('#bx');
+  function off() { bx.setAttribute('opacity', 0); topIdx.forEach(function (c, j) { svg.querySelector('#bd' + j).setAttribute('opacity', 0); }); hideTip(); }
+  function move(e) {
+    var r = svg.getBoundingClientRect(), vx = (e.clientX - r.left) * (W / r.width);
+    var best = 0, bd = 1e18;
+    for (var k = 0; k < M.N; k++) { var dd = Math.abs(X(M.samples[k].ts) - vx); if (dd < bd) { bd = dd; best = k; } }
+    var cx = X(M.samples[best].ts);
+    bx.setAttribute('x1', cx); bx.setAttribute('x2', cx); bx.setAttribute('opacity', 1);
+    topIdx.forEach(function (c, j) { var d = svg.querySelector('#bd' + j); d.setAttribute('cx', cx); d.setAttribute('cy', Y(CA[c][best])); d.setAttribute('opacity', 1); });
+    var list = M.order.map(function (c) { return [c, CA[c][best]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    var h = '<div class="tt">' + fMDHM(M.samples[best].ts) + '</div><div class="tr sum"><span>' + mt0.bSum + '</span><b>' + fN(CT[best]) + '</b></div>';
+    list.slice(0, 8).forEach(function (it) {
+      h += '<div class="tr"><span><i style="background:' + (topIdx.indexOf(it[0]) >= 0 ? COL.char[it[0]] : 'var(--axis)') + '"></i>' + esc(M.chars[it[0]].name) + roleBadge(M.chars[it[0]].role) + '</span><b>' + fN(it[1]) + '</b></div>';
+    });
+    if (list.length > 8) { var rest = 0; list.slice(8).forEach(function (it) { rest += it[1]; }); h += '<div class="tr dim"><span>그 외 ' + (list.length - 8) + '명</span><b>' + fN(rest) + '</b></div>'; }
+    showTip(h, e.clientX, e.clientY);
+  }
+  svg.querySelector('#bhit').addEventListener('pointermove', move);
+  svg.querySelector('#bhit').addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') off(); });
+}
+
+/* ---------- KPI ---------- */
+function renderKPI() {
+  var h = [];
+  function tile(lab, val, d) { h.push('<div class="tile"><div class="lab">' + lab + '</div><div class="val">' + val + '</div><div class="d">' + d + '</div></div>'); }
+  if (!M.N) {
+    ['누적 메시지 합계', '금일 누적 (오늘 Δ)', '최근 1시간 증가', '최근 3시간 시간당 평균', '활성 캐릭터 수', '수집 샘플 수', '누적 좋아요 합계'].forEach(function (l) { tile(l, '—', '데이터 없음'); });
+    $('tiles').innerHTML = dailyTiles() + h.join(''); return;
+  }
+  var w1 = M.win(-1, 1), w3 = M.win(-1, 3), w24 = M.win(-1, 24);
+  tile('누적 메시지 합계', fN(M.total),
+    w24.full ? '24시간 ' + fD(w24.d) : '수집 시작 후 ' + (w24.span / HOUR).toFixed(1) + '시간 (24시간 미만)');
+  var t = M.today, prevDay = M.days.length > 1 ? M.days[M.days.length - 2] : null;
+  tile('금일 누적 (오늘 Δ)', fD(t.total),
+    fMD(t.start) + ' ~' + fHM(M.lastTs) + ' 기준' + (prevDay ? ' · 전일 합계 ' + fN(prevDay.total) : ''));
+  tile('최근 1시간 증가', fD(w1.d), fHM(M.lastTs - w1.span) + ' → ' + fHM(M.lastTs) + (w1.full ? '' : ' (수집 시작 후 ' + Math.round(w1.span / 60000) + '분)'));
+  var hrs3 = Math.max(w3.span / HOUR, 1e-6);
+  var hl = M.hours.length >= 2 ? M.hours[M.hours.length - 2] : null;
+  tile('최근 3시간 시간당 평균', fN(w3.d / hrs3) + ' <small>건/h</small>',
+    (hl && !hl.gap ? '직전 완료 시간(' + kd(hl.start).getUTCHours() + '시) ' + fD(hl.total) + '건' : '직전 완료 시간 없음') + (w3.full ? '' : ' · 집계 ' + Math.round(w3.span / 60000) + '분'));
+  var act = M.rows.filter(function (r) { return r.d1 > 0.5; }).length;
+  tile('활성 캐릭터 수', act + ' <small>/ ' + M.C + '</small>', '최근 1시간 증가 > 0');
+  tile('수집 샘플 수', fN(M.N), fMDHM(M.samples[0].ts) + ' ~ ' + fMDHM(M.lastTs));
+  var w1L = M.win(-1, 1, 'like');
+  tile('누적 좋아요 합계', fN(M.totalL), '금일 Δ ' + fD(M.todayL ? M.todayL.total : null) + ' · 최근 1h ' + fD(w1L.d));
+  $('tiles').innerHTML = dailyTiles() + h.join('');
+}
+
+/* ---------- 헤더 ---------- */
+function agoText(ms) {
+  var m = Math.max(0, Math.round(ms / 60000));
+  if (m < 1) return '방금 전';
+  if (m < 60) return m + '분 전';
+  if (m < 48 * 60) return Math.floor(m / 60) + '시간 ' + (m % 60) + '분 전';
+  return Math.floor(m / 1440) + '일 전';
+}
+function renderHeader() {
+  var g = Date.parse(D.generated_at || '');
+  if (!isFinite(g)) g = M.lastTs;
+  var sub = g && isFinite(g) ? '마지막 수집 ' + fMDHM(g) + ' (' + agoText(Date.now() - g) + ')' : '마지막 수집 —';
+  $('sub').textContent = sub + ' · 출처 ' + (D.source || '—');
+  $('banner').style.display = D.is_sample ? 'block' : 'none';
+  var st = $('stale'), lag = (g && isFinite(g)) ? Date.now() - g : null;
+  if (lag != null && lag > 40 * 60000) {
+    st.textContent = '수집 지연: 마지막 수집이 ' + agoText(lag) + ' (' + fMDHM(g) + '). 수집기는 10분 주기입니다. 맥미니 전원·네트워크·launchd(com.teaz.collect) 상태를 확인하세요.';
+    st.style.display = 'block';
+  } else if (!M.N) {
+    st.textContent = 'data.js 에 샘플이 없습니다. 수집기가 아직 실행되지 않았거나 업로드가 안 된 상태입니다.';
+    st.style.display = 'block';
+  } else st.style.display = 'none';
+  var ei = $('evInfo');
+  ei.textContent = EV.length ? '이벤트 마커: events.js (' + EV.length + '건)' : '';
+  ei.style.display = EV.length ? 'block' : 'none';
+}
+
+/* ---------- 속성별 인기: 역할 요약 표 + 태그 막대 ---------- */
+var TAG_MET = { cum: ['누적 메시지', fN], dt: ['금일 Δ', fD], d1: ['최근 1h Δ', fD], d3: ['최근 3h Δ', fD], like: ['누적 좋아요', fN] };
+function renderRoleTable() {
+  var el = $('roleTable');
+  var agg = ROLES.map(function (r) {
+    var cu = 0, dt = 0, d1 = 0, n = 0;
+    M.chars.forEach(function (c, ci) {
+      if (c.role !== r) return;
+      n++; cu += M.rows[ci].cum; dt += M.rows[ci].dt || 0; d1 += M.rows[ci].d1 || 0;
+    });
+    return { role: r, n: n, cum: cu, dt: dt, d1: d1, avg: n ? cu / n : 0, share: M.total ? cu / M.total : 0 };
+  }).filter(function (a) { return a.n > 0; });
+  if (!agg.length) { el.innerHTML = '<tbody><tr><td class="dim">데이터 없음</td></tr></tbody>'; return; }
+  var h = '<thead><tr><th>역할</th><th class="num">캐릭터 수</th><th class="num">누적</th><th class="num">금일 Δ</th><th class="num">최근 1h Δ</th><th class="num hi">캐릭터당 평균 누적</th><th class="num">점유율</th></tr></thead><tbody>';
+  agg.forEach(function (a) {
+    h += '<tr><td><span class="role r-' + a.role + '" style="margin-left:0">' + a.role + '</span></td><td class="num">' + a.n + '</td><td class="num">' + fN(a.cum) +
+      '</td><td class="num">' + fD(a.dt) + '</td><td class="num">' + fD(a.d1) + '</td><td class="num hi">' + fN(a.avg) +
+      '</td><td class="num">' + (a.share * 100).toFixed(1) + '%</td></tr>';
+  });
+  el.innerHTML = h + '</tbody>';
+}
+function renderRoleChips() {
+  var items = [['', '전체']].concat(ROLES.map(function (r) { return [r, r]; }));
+  $('roleChips').innerHTML = items.map(function (it) { return '<button type="button" data-r="' + it[0] + '" class="' + (state.tagRole === it[0] ? 'on' : '') + '">' + it[1] + '</button>'; }).join('');
+  $('roleChips').onclick = function (e) { var b = e.target.closest('button'); if (!b) return; state.tagRole = b.getAttribute('data-r'); hideTip(); renderRoleChips(); renderT(); };
+}
+function segmentedT() {
+  segmented('metT', [['cum', '누적 메시지'], ['dt', '금일 Δ'], ['d1', '최근 1h Δ'], ['d3', '최근 3h Δ'], ['like', '누적 좋아요']], state.tagMetric, function (v) { state.tagMetric = v; hideTip(); segmentedT(); renderT(); });
+  segmented('aggT', [['avg', '캐릭터당 평균'], ['sum', '합계']], state.tagAgg, function (v) { state.tagAgg = v; hideTip(); segmentedT(); renderT(); });
+}
+function clipText(str, w) {
+  if (evTextW(str) <= w) return str;
+  var o = '';
+  for (var i = 0; i < str.length && evTextW(o + str[i] + '…') <= w; i++) o += str[i];
+  return o + '…';
+}
+function renderT() {
+  var host = $('chartT'), tm = TAG_MET[state.tagMetric], fv = tm[1], isAvg = state.tagAgg === 'avg';
+  var list = M.tagStats(state.tagMetric).filter(function (o) {
+    if (state.tagRole && o.role !== state.tagRole) return false;
+    if (!state.tagAll && !o.role) return false;
+    if (state.tagMin2 && o.n < 2) return false;
+    return true;
+  });
+  list.forEach(function (o) { o.val = isAvg ? o.avg : o.sum; });
+  list.sort(function (a, b) { return b.val - a.val || b.n - a.n || a.tag.localeCompare(b.tag, 'ko'); });
+  list = list.slice(0, 20);
+  if (!M.N || !list.length) { host.innerHTML = '<div class="empty">' + (M.N ? '조건에 맞는 태그 없음' : '데이터 없음') + '</div>'; return; }
+  var vlab = list.map(function (o) { return (isAvg ? '평균 ' : '합계 ') + fv(o.val) + ' · ' + o.n + '명'; });
+  var W = Math.max(300, host.clientWidth), rowH = 24, bh = 14, mt = 6, mb = 26;
+  var labW = Math.max.apply(null, list.map(function (o) { return evTextW(o.tag); }));
+  var ml = Math.min(Math.round(W * 0.42), Math.max(64, labW + 14));
+  var mr = Math.min(Math.max.apply(null, vlab.map(evTextW)) + 10, Math.max(60, W - ml - 80));
+  var pw = W - ml - mr, ph = list.length * rowH, Ht = mt + ph + mb;
+  var pmax = Math.max.apply(null, list.map(function (o) { return o.val; }).concat([0]));
+  var nmax = Math.max.apply(null, list.map(function (o) { return -o.val; }).concat([0]));
+  var sc = niceScale(Math.max(pmax, nmax), 4);
+  var top = Math.max(sc.step, Math.ceil(pmax / sc.step - 1e-9) * sc.step), bot = Math.ceil(nmax / sc.step - 1e-9) * sc.step;
+  function X(v) { return ml + (v + bot) / (top + bot) * pw; }
+  var x0 = X(0);
+  var s = ['<svg viewBox="0 0 ' + W + ' ' + Ht + '" role="img" aria-label="속성 태그별 ' + esc(tm[0]) + ' ' + (isAvg ? '캐릭터당 평균' : '합계') + ' 막대 차트">'];
+  for (var v = -bot; v <= top + 1e-9; v += sc.step) {
+    var x = X(v), z = Math.abs(v) < 1e-9;
+    s.push('<line x1="' + x + '" x2="' + x + '" y1="' + mt + '" y2="' + (mt + ph) + '" style="stroke:' + (z ? 'var(--axis)' : 'var(--grid)') + '" stroke-width="1"/>');
+    s.push('<text x="' + x + '" y="' + (mt + ph + 16) + '" text-anchor="middle" font-size="11" style="fill:var(--muted)">' + (sc.step < 1 ? (z ? '0' : v.toFixed(1)) : nf.format(z ? 0 : v)) + '</text>');
+  }
+  s.push('<rect id="hlT" x="0" y="' + mt + '" width="' + W + '" height="' + rowH + '" style="fill:var(--ink)" opacity="0"/>');
+  list.forEach(function (o, i) {
+    var y = mt + i * rowH, col = o.role ? ROLE_COLOR[o.role] : 'var(--muted)', xv = X(o.val), by = y + (rowH - bh) / 2;
+    s.push('<text x="' + (ml - 8) + '" y="' + (y + rowH / 2 + 4) + '" text-anchor="end" font-size="11" style="fill:var(--ink2)">' + esc(clipText(o.tag, ml - 12)) + '</text>');
+    if (Math.abs(xv - x0) >= 0.5) s.push('<rect x="' + Math.min(x0, xv) + '" y="' + by + '" width="' + Math.abs(xv - x0) + '" height="' + bh + '" rx="2"' + (o.val < 0 ? ' fill-opacity=".55"' : '') + ' style="fill:' + col + ';stroke:var(--surface);stroke-width:1.2"/>');
+    var lx = o.val < 0 ? x0 + 4 : Math.max(xv, x0) + 5;
+    s.push('<text x="' + lx + '" y="' + (y + rowH / 2 + 4) + '" font-size="11" style="fill:var(--ink);stroke:var(--surface);stroke-width:3px;paint-order:stroke">' + esc(vlab[i]) + '</text>');
+  });
+  s.push('</svg>');
+  host.innerHTML = s.join('');
+
+  var svg = host.firstChild, hl = svg.querySelector('#hlT');
+  function pick(e) {
+    var r = svg.getBoundingClientRect(), vy = (e.clientY - r.top) * (Ht / r.height);
+    var i = Math.floor((vy - mt) / rowH);
+    if (i < 0 || i >= list.length) { hl.setAttribute('opacity', 0); hideTip(); return; }
+    hl.setAttribute('y', mt + i * rowH); hl.setAttribute('opacity', .07);
+    showTip(tagTip(list[i], fv, tm[0]), e.clientX, e.clientY);
+  }
+  svg.addEventListener('pointermove', pick);
+  svg.addEventListener('pointerdown', pick);
+  svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { hl.setAttribute('opacity', 0); hideTip(); } });
+}
+function tagTip(o, fv, metLabel) {
+  var h = '<div class="tt">' + esc(o.tag) + (o.role ? '' : '<em>설정 태그</em>') + '<em>' + esc(metLabel) + '</em></div>';
+  h += '<div class="tr sum"><span>캐릭터 수</span><b>' + o.n + '명</b></div>';
+  h += '<div class="tr"><span>합계</span><b>' + fv(o.sum) + '</b></div><div class="tr"><span>평균</span><b>' + fv(o.avg) + '</b></div>';
+  h += '<div class="te">';
+  o.members.slice(0, 12).forEach(function (m) {
+    var c = M.chars[m.ci];
+    h += '<div class="tr"><span><i style="background:' + COL.char[m.ci] + '"></i>' + esc(c.name) + (c.role ? '(' + c.role + ')' : '') + '</span><b>' + fv(m.v) + '</b></div>';
+  });
+  if (o.members.length > 12) h += '<div class="tr dim"><span>그 외 ' + (o.members.length - 12) + '명</span></div>';
+  return h + '</div>';
+}
+
+/* ---------- 순위 표 ---------- */
+var COLS = [
+  ['rank', '순위', 'num'], ['name', '캐릭터', ''], ['work', '시장', ''], ['cum', '누적', 'num'], ['share', '점유율', 'num'],
+  ['d1', '최근 1h Δ', 'num'], ['d3', '최근 3h Δ', 'num'], ['dt', '금일 Δ', 'num'], ['like', '좋아요', 'num'], ['dtL', '좋아요 금일 Δ', 'num'], ['spark', '시간별 추이', '']
+];
+function sparkSvg(vals, color) {
+  if (!vals.length) return '<span class="dim">—</span>';
+  var n = vals.length, W = 96, H = 24, mx = Math.max.apply(null, vals.concat([1])), bw = W / n;
+  var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="96" height="24" style="display:block" role="img" aria-label="최근 ' + n + '개 시간 구간 증가량">';
+  vals.forEach(function (v, i) {
+    var h = Math.max(0, v) / mx * (H - 2);
+    if (h > 0.3) s += '<rect x="' + (i * bw + 0.6) + '" y="' + (H - h) + '" width="' + Math.max(1, bw - 1.2) + '" height="' + h + '" rx="1" fill="' + color + '"' + (i === n - 1 ? ' opacity=".6"' : '') + '/>';
+  });
+  return s + '<line x1="0" x2="' + W + '" y1="' + (H - 0.5) + '" y2="' + (H - 0.5) + '" style="stroke:var(--axis)"/></svg>';
+}
+function renderChips() {
+  var items = [['', '전체']].concat(M.works.map(function (w) { return [w.name, w.name]; }));
+  $('chips').innerHTML = items.map(function (it) { return '<button type="button" data-w="' + esc(it[0]) + '" class="' + (state.wfilter === it[0] ? 'on' : '') + '">' + esc(it[1]) + '</button>'; }).join('');
+  $('chips').onclick = function (e) { var b = e.target.closest('button'); if (!b) return; state.wfilter = b.getAttribute('data-w'); renderChips(); renderRank(); };
+}
+function renderRank() {
+  var el = $('rank');
+  if (!M.rows.length) { el.innerHTML = '<tbody><tr><td class="dim">데이터 없음</td></tr></tbody>'; return; }
+  var k = state.sortKey, dir = state.sortDir;
+  var rows = M.rows.filter(function (r) { return !state.wfilter || r.work === state.wfilter; }).slice();
+  rows.sort(function (a, b) {
+    var x = a[k], y = b[k];
+    if (k === 'spark') { x = a.spark.length ? a.spark[a.spark.length - 1] : 0; y = b.spark.length ? b.spark[b.spark.length - 1] : 0; }
+    if (typeof x === 'string' || typeof y === 'string') return dir * String(x).localeCompare(String(y), 'ko');
+    return dir * ((x == null ? -1e18 : x) - (y == null ? -1e18 : y)) || a.rank - b.rank;
+  });
+  var h = '<thead><tr>' + COLS.map(function (c) {
+    var on = c[0] === k;
+    return '<th class="' + c[2] + (on ? ' sorted' : '') + '" aria-sort="' + (on ? (dir < 0 ? 'descending' : 'ascending') : 'none') + '"><button type="button" data-k="' + c[0] + '">' + c[1] + (on ? (dir < 0 ? ' ▼' : ' ▲') : '') + '</button></th>';
+  }).join('') + '</tr></thead><tbody>';
+  rows.forEach(function (r) {
+    h += '<tr><td class="num">' + r.rank + '</td><td><i class="dot" style="background:' + COL.char[r.ci] + '"></i>' + esc(r.name) + roleBadge(M.chars[r.ci].role) + '</td><td>' + esc(r.work) + '</td>' +
+      '<td class="num">' + fN(r.cum) + '</td><td class="num">' + (r.share * 100).toFixed(1) + '%</td>' +
+      '<td class="num">' + fD(r.d1) + '</td><td class="num">' + fD(r.d3) + '</td><td class="num">' + fD(r.dt) + '</td><td class="num">' + fN(r.like) + '</td><td class="num">' + fD(r.dtL) + '</td>' +
+      '<td>' + sparkSvg(r.spark, COL.char[r.ci]) + '</td></tr>';
+  });
+  el.innerHTML = h + '</tbody>';
+  el.querySelector('thead').onclick = function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var nk = b.getAttribute('data-k');
+    if (nk === state.sortKey) state.sortDir = -state.sortDir; else { state.sortKey = nk; state.sortDir = (nk === 'name' || nk === 'work' || nk === 'rank') ? 1 : -1; }
+    renderRank();
+  };
+}
+
+/* ---------- 시장 표 ---------- */
+function renderWorks() {
+  var el = $('workTable');
+  if (!M.works.length) { el.innerHTML = '<tbody><tr><td class="dim">데이터 없음</td></tr></tbody>'; return; }
+  var agg = M.works.map(function (w, wi) {
+    var cu = 0, d1 = 0;
+    w.members.forEach(function (ci) { cu += M.rows[ci].cum; d1 += M.rows[ci].d1 || 0; });
+    return { wi: wi, name: w.name, n: w.members.length, cum: cu, share: M.total ? cu / M.total : 0, d1: d1 };
+  }).sort(function (a, b) { return b.cum - a.cum; });
+  var h = '<thead><tr><th>시장</th><th class="num">캐릭터 수</th><th class="num">누적</th><th class="num">점유율</th><th class="num">최근 1h Δ</th></tr></thead><tbody>';
+  agg.forEach(function (a) {
+    h += '<tr><td><i class="dot" style="background:' + COL.work[a.wi] + '"></i>' + esc(a.name) + '</td><td class="num">' + a.n + '</td><td class="num">' + fN(a.cum) +
+      '</td><td class="num">' + (a.share * 100).toFixed(1) + '%</td><td class="num">' + fD(a.d1) + '</td></tr>';
+  });
+  el.innerHTML = h + '</tbody>';
+}
+
+/* ---------- 4개국 일간 (TOPTOON_DAILY: 참고 사이트 이력 + 자체 00:00 KST 마감) ---------- */
+var DY = window.TOPTOON_DAILY || { days: [], markets: [] };
+var MK = DY.markets || [];
+state.rangeD = 'all';
+function dTs(d) { return Date.parse(d + 'T00:00:00+09:00'); }
+function dLabel(d) { var t = dTs(d); return fMD(t) + ' (' + WD[kd(t).getUTCDay()] + ')'; }
+function dTotal(r) { return r.chars == null ? null : r.chars + (r.content || 0); }
+function dOverseas(r) {
+  if (r.chars == null || !r.chars || r.kr == null) return null;
+  return (r.chars - r.kr) / r.chars;
+}
+function lastFullDay() {
+  for (var i = DY.days.length - 1; i >= 0; i--) { var r = DY.days[i]; if (!r.partial && r.chars != null) return r; }
+  return null;
+}
+function marketColor(label) {
+  for (var i = 0; i < M.works.length; i++) if (M.works[i].name === label) return COL.work[i];
+  return 'var(--muted)';
+}
+function dailyTiles() {
+  var r = lastFullDay(), h = [];
+  function tile(lab, val, d) { h.push('<div class="tile"><div class="lab">' + lab + '</div><div class="val">' + val + '</div><div class="d">' + d + '</div></div>'); }
+  if (!r) return '';
+  var t = dTotal(r);
+  tile('최근 일간 대화 (4개국 합)', fN(t), dLabel(r.date) + (r.content != null ? ' · 멀티 ' + fN(r.content) + ' 포함' : ' · 멀티 미포함') + (r.src === 'ref' ? ' · 참고 사이트 값' : ''));
+  var recent = DY.days.filter(function (x) { return !x.partial && x.chars != null; }).slice(-7);
+  var avg = recent.length ? recent.reduce(function (s, x) { return s + x.chars; }, 0) / recent.length : null;
+  tile('최근 7일 평균 (캐릭터)', fN(avg), recent.length + '일 · 멀티 제외');
+  var b = null;
+  for (var i = DY.days.length - 1; i >= 0; i--) if (DY.days[i].baseline != null) { b = DY.days[i]; break; }
+  tile('기준값 (런칭 후 일평균)', b ? fN(b.baseline) : '—', b ? '누적 ÷ ' + DY.launch + ' 이후 경과일 · ' + fMD(dTs(b.date)) : '—');
+  var o = dOverseas(r);
+  tile('해외 비중', o == null ? '—' : (o * 100).toFixed(1) + '%', '일본·대만·Global · ' + fMD(dTs(r.date)));
+  return h.join('');
+}
+function renderDaily() {
+  var host = $('chartD'), all = DY.days;
+  var days = state.rangeD === 'all' ? all : all.slice(Math.max(0, all.length - state.rangeD));
+  if (!days.length) { host.innerHTML = '<div class="empty">데이터 없음</div>'; return; }
+  var n = days.length, W = Math.max(300, host.clientWidth), Ht = W < 520 ? 300 : 340;
+  var ml = W < 520 ? 46 : 56, mr = 8, mt = 26, mb = 44, pw = W - ml - mr, ph = Ht - mt - mb;
+  var mx = 0;
+  days.forEach(function (r) { mx = Math.max(mx, dTotal(r) || 0, r.baseline || 0); });
+  var sc = niceScale(mx, 5);
+  function Y(v) { return mt + ph - v / sc.top * ph; }
+  var band = pw / n, bw = Math.max(2, Math.min(band * 0.72, 22));
+  var s = ['<svg viewBox="0 0 ' + W + ' ' + Ht + '" role="img" aria-label="4개국 일일 대화량 누적 막대와 기준값 선">'];
+  for (var v = 0; v <= sc.top + 1e-9; v += sc.step) {
+    var y = Y(v);
+    s.push('<line x1="' + ml + '" x2="' + (W - mr) + '" y1="' + y + '" y2="' + y + '" style="stroke:' + (v === 0 ? 'var(--axis)' : 'var(--grid)') + '"/>');
+    s.push('<text x="' + (ml - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" style="fill:var(--muted)">' + nf.format(v) + '</text>');
+  }
+  s.push('<rect id="hlD" x="0" y="' + mt + '" width="' + band + '" height="' + ph + '" style="fill:var(--ink)" opacity="0"/>');
+  var every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(pw / 44)))), pts = [], firstSelf = -1;
+  days.forEach(function (r, i) {
+    var x = ml + i * band + (band - bw) / 2, cx = x + bw / 2;
+    if (firstSelf < 0 && r.src === 'self') firstSelf = i;
+    if (r.chars == null) {
+      s.push('<line x1="' + x + '" x2="' + (x + bw) + '" y1="' + Y(0) + '" y2="' + Y(0) + '" style="stroke:var(--muted)" stroke-width="2" stroke-dasharray="3 3"/>');
+    } else {
+      s.push('<g' + (r.partial || r.approx ? ' opacity=".6"' : '') + '>');
+      var acc = 0, segs = [];
+      MK.forEach(function (m) { var d = r[m[0]]; if (d > 0) { segs.push([marketColor(m[1]), acc, acc + d]); acc += d; } });
+      if (r.content > 0) { segs.push(['var(--muted)', acc, acc + r.content]); acc += r.content; }
+      segs.forEach(function (g, j) {
+        if (j === segs.length - 1) s.push(barPath(x, Y(g[1]), Y(g[2]), bw, g[0]));
+        else if (Y(g[1]) - Y(g[2]) >= 0.4) s.push('<rect x="' + x + '" y="' + Y(g[2]) + '" width="' + bw + '" height="' + (Y(g[1]) - Y(g[2])) + '" style="fill:' + g[0] + ';stroke:var(--surface);stroke-width:1.2"/>');
+      });
+      s.push('</g>');
+    }
+    pts.push(r.baseline == null ? null : [cx, Y(r.baseline)]);
+    if ((n - 1 - i) % every === 0) s.push('<text x="' + cx + '" y="' + (mt + ph + 16) + '" text-anchor="middle" font-size="11" style="fill:var(--ink2)">' + fMD(dTs(r.date)) + '</text>');
+  });
+  var path = '', open = false;
+  pts.forEach(function (p) { if (!p) { open = false; return; } path += (open ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1); open = true; });
+  if (path) s.push('<path d="' + path + '" fill="none" style="stroke:var(--ink)" stroke-width="1.5" stroke-dasharray="5 4"/>');
+  if (firstSelf > 0) s.push(evSvg([{ ev: { label: '자체 수집 시작', ts: dTs(days[firstSelf].date) }, x: ml + firstSelf * band }], W, 13, mt + ph));
+  s.push('</svg>');
+  host.innerHTML = s.join('');
+  var svg = host.firstChild, hl = svg.querySelector('#hlD');
+  function pick(e) {
+    var rc = svg.getBoundingClientRect(), vx = (e.clientX - rc.left) * (W / rc.width), i = Math.floor((vx - ml) / band);
+    if (i < 0 || i >= n || vx > W - mr) { hl.setAttribute('opacity', 0); hideTip(); return; }
+    hl.setAttribute('x', ml + i * band); hl.setAttribute('opacity', .07);
+    showTip(dailyTip(days[i]), e.clientX, e.clientY);
+  }
+  svg.addEventListener('pointermove', pick);
+  svg.addEventListener('pointerdown', pick);
+  svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { hl.setAttribute('opacity', 0); hideTip(); } });
+  $('noteD').textContent = '막대 = 시장별 캐릭터 일일 증가 + 멀티 작품(회색), 점선 = 기준값. ' + (firstSelf > 0 ? fMD(dTs(days[firstSelf].date)) + '부터 자체 수집, 이전은 참고 사이트 값. ' : '') + '옅은 막대는 진행 중이거나 마감 시각이 근사인 날.';
+}
+function dailyTip(r) {
+  var h = '<div class="tt">' + dLabel(r.date) + (r.partial ? '<em>진행 중 ~' + r.partial + '</em>' : '') + '<em>' + (r.src === 'ref' ? '참고 사이트' : '자체 수집') + '</em></div>';
+  if (r.chars == null) return h + '<div class="tn">일간 값 없음 (결측·출처 경계)</div>' + (r.baseline != null ? '<div class="tr"><span>기준값</span><b>' + fN(r.baseline) + '</b></div>' : '');
+  h += '<div class="tr sum"><span>합계' + (r.content != null ? ' (멀티 포함)' : '') + '</span><b>' + fN(dTotal(r)) + '</b></div>';
+  MK.forEach(function (m) { h += '<div class="tr"><span><i style="background:' + marketColor(m[1]) + '"></i>' + m[1] + '</span><b>' + fN(r[m[0]]) + '</b></div>'; });
+  h += '<div class="tr"><span><i style="background:var(--muted)"></i>멀티 작품</span><b>' + fN(r.content) + '</b></div>';
+  h += '<div class="te"><div class="tr"><span>기준값</span><b>' + fN(r.baseline) + '</b></div>';
+  var o = dOverseas(r);
+  h += '<div class="tr"><span>해외 비중</span><b>' + (o == null ? '—' : (o * 100).toFixed(1) + '%') + '</b></div></div>';
+  if (r.approx) h += '<div class="tn" style="margin-top:3px">전날 마감은 수집 시작 직후 샘플로 근사</div>';
+  return h;
+}
+function renderDailyTable() {
+  var el = $('dailyTable'), rows = DY.days.slice(-21).reverse();
+  if (!rows.length) { el.innerHTML = '<tbody><tr><td class="dim">데이터 없음</td></tr></tbody>'; return; }
+  var h = '<thead><tr><th>날짜</th><th>출처</th>' + MK.map(function (m) { return '<th class="num">' + m[1] + '</th>'; }).join('') +
+    '<th class="num">캐릭터 합</th><th class="num">멀티</th><th class="num">합계</th><th class="num">기준값</th><th class="num">해외%</th></tr></thead><tbody>';
+  rows.forEach(function (r) {
+    var o = dOverseas(r);
+    h += '<tr><td>' + dLabel(r.date) + (r.partial ? ' <span style="color:var(--muted)">진행 중 ~' + r.partial + '</span>' : '') + '</td><td class="dim">' + (r.src === 'ref' ? '참고' : '자체') + '</td>' +
+      MK.map(function (m) { return '<td class="num">' + fN(r[m[0]]) + '</td>'; }).join('') +
+      '<td class="num">' + fN(r.chars) + '</td><td class="num">' + fN(r.content) + '</td><td class="num">' + fN(dTotal(r)) + '</td><td class="num">' + fN(r.baseline) + '</td><td class="num">' + (o == null ? '—' : (o * 100).toFixed(1) + '%') + '</td></tr>';
+  });
+  el.innerHTML = h + '</tbody>';
+}
+function segmentedD() {
+  segmented('rangeD', [[30, '최근 30일'], ['all', '전체']], state.rangeD, function (v) { state.rangeD = v === 'all' ? 'all' : +v; hideTip(); segmentedD(); renderDaily(); });
+}
+
+/* ---------- 전체 렌더 ---------- */
+function renderCharts() { renderDaily(); renderA(); renderB(); renderC(); renderT(); }
+function renderAll() {
+  COL = readColors();
+  renderHeader(); renderKPI();
+  renderLegend('legA'); renderLegend('legC');
+  segmentedM(); segmentedA(); segmentedD(); segmentedC(); segmentedT(); renderRoleChips();
+  renderCharts(); renderDailyTable(); renderRoleTable(); renderChips(); renderRank(); renderWorks();
+}
+function segmentedM() {
+  ['metA', 'metB', 'metC'].forEach(function (id) {
+    segmented(id, [['msg', '메시지'], ['like', '좋아요']], state.metric, function (v) { state.metric = v; hideTip(); segmentedM(); renderCharts(); });
+  });
+}
+function segmentedA() {
+  segmented('modeA', [['stack', '캐릭터별 누적막대'], ['sum', '합산만']], state.modeA, function (v) { state.modeA = v; hideTip(); segmentedA(); renderA(); });
+  segmented('rangeA', [[24, '최근 24시간'], [48, '최근 48시간'], ['all', '전체']], state.rangeA, function (v) { state.rangeA = v === 'all' ? 'all' : +v; hideTip(); segmentedA(); renderA(); });
+}
+function segmentedC() {
+  segmented('modeC', [['stack', '캐릭터별 누적막대'], ['sum', '합산만']], state.modeC, function (v) { state.modeC = v; hideTip(); segmentedC(); renderC(); });
+}
+
+$('logB').addEventListener('change', function () { state.logB = this.checked; hideTip(); renderB(); });
+$('minT').addEventListener('change', function () { state.tagMin2 = this.checked; hideTip(); renderT(); });
+$('allTagsT').addEventListener('change', function () { state.tagAll = this.checked; hideTip(); renderT(); });
+var rzT = null;
+window.addEventListener('resize', function () { clearTimeout(rzT); rzT = setTimeout(function () { hideTip(); renderCharts(); }, 120); });
+if (window.matchMedia) {
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  var onScheme = function () { renderAll(); };
+  if (mq.addEventListener) mq.addEventListener('change', onScheme); else if (mq.addListener) mq.addListener(onScheme);
+}
+new MutationObserver(function () { renderAll(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+setInterval(renderHeader, 30000);
+/* 수집 주기(10분)에 맞춰 새 data.js 를 받도록 페이지 새로고침. 툴팁 조작 중이면 다음 기회로 */
+setInterval(function () { if (tip.style.display !== 'block') location.reload(); }, 10 * 60000);
+
+renderAll();
+
+/* ---------- 디버그: ?debug=1 ---------- */
+if (/[?&]debug=1/.test(location.search)) {
+  console.log('hours ' + JSON.stringify(M.hours.map(function (b) {
+    return { hour: fMDHM(b.start), total: Math.round(b.total), n: b.n, gap: b.gap, partial: b.partial, interp: b.interp, ib: (b.interpS ? 'S' : '') + (b.interpE ? 'E' : ''), top: b.d.map(function (v, i) { return [M.chars[i].name, v]; }).sort(function (a, b) { return b[1] - a[1]; })[0].join(':') };
+  })));
+  console.log('days ' + JSON.stringify(M.days.map(function (b) { return { day: fMD(b.start), total: Math.round(b.total), n: b.n, partial: b.partial, interp: b.interp }; })));
+  var hs = 0; M.hours.forEach(function (b) { hs += b.total; });
+  var ds = 0; M.days.forEach(function (b) { ds += b.total; });
+  console.log('check: sum(hour deltas)=' + Math.round(hs) + ' sum(day deltas)=' + Math.round(ds) + ' cumulative=' + Math.round(M.total));
+  var hsL = 0, dsL = 0; M.hoursL.forEach(function (b) { hsL += b.total; }); M.daysL.forEach(function (b) { dsL += b.total; });
+  console.log('check(like): sum(hour deltas)=' + Math.round(hsL) + ' sum(day deltas)=' + Math.round(dsL) + ' cumulative=' + Math.round(M.totalL));
+  var ts = M.tagStats('cum').filter(function (o) { return o.role && o.n >= 2; }).sort(function (a, b) { return b.avg - a.avg; }).slice(0, 5);
+  console.log('tagStats(cum) top5 avg: ' + ts.map(function (o) { return o.tag + '(' + o.role + ') 평균 ' + fN(o.avg) + ' 합계 ' + fN(o.sum) + ' n=' + o.n; }).join(' | '));
+}
+window.__TEAZ_MODEL__ = M;
+})();
+</script>
+
+</body>
+</html>
